@@ -2,7 +2,7 @@
 
 This repository contains the unified group project for the Kaggle **Spaceship Titanic** binary classification task. The goal is to predict whether each passenger was `Transported` using reproducible machine learning scripts under one shared project structure.
 
-Earlier notebook experiments were converted into runnable Python scripts for reproducibility. The final source code lives in `src/`, with model outputs written to `outputs/` and figures written to `figures/`.
+Earlier notebook experiments were converted into runnable Python scripts for reproducibility. The final source code lives in `src/`, model outputs are written to `outputs/`, and report/demo figures are written to `figures/`.
 
 ## Model list
 
@@ -10,8 +10,8 @@ The project currently includes four model tracks:
 
 - **SVM** using raw Kaggle CSV files and the SVM notebook-equivalent preprocessing pipeline.
 - **LightGBM** using the preprocessed CatBoost-style feature package from the LightGBM experiment.
-- **Logistic Regression** using the teammate package's preprocessing, Optuna hyperparameter search, evaluation reports, and performance visualization.
-- **Random Forest** using the teammate implementation's spending features, age binning, one-hot encoding, 5-fold cross-validation, validation reports, feature importance, and Kaggle submission generation.
+- **Logistic Regression** using the teammate package's preprocessing, Optuna hyperparameter search, leakage-safe validation evaluation, reports, and performance visualization.
+- **Random Forest** using spending features, age binning, train-learned imputation values, one-hot encoding, 5-fold cross-validation, validation reports, feature importance, and Kaggle submission generation.
 
 ## Repository structure
 
@@ -19,8 +19,9 @@ The project currently includes four model tracks:
 spaceship-titanic-mlw/
 ├── README.md
 ├── requirements.txt
-├── .gitignore
 ├── src/
+│   ├── run_all.py
+│   ├── compare_models.py
 │   ├── train_svm.py
 │   ├── train_lightgbm.py
 │   ├── train_logistic_regression.py
@@ -29,29 +30,16 @@ spaceship-titanic-mlw/
 │   ├── metrics.py
 │   └── utils.py
 ├── outputs/
-│   └── .gitkeep
-├── figures/
 │   ├── .gitkeep
-│   ├── age_by_transported.png
-│   ├── bivariate_summary_fixed.png
-│   ├── boxplots_outliers.png
-│   ├── cabin_analysis.png
-│   ├── cabin_analysis_fixed.png
-│   ├── categorical_analysis.png
-│   ├── correlation_heatmap_fixed.png
-│   ├── missing_values.png
-│   ├── model comparison graph.png
-│   ├── model comparison.png
-│   ├── numerical_distributions.png
-│   ├── spending_analysis.png
-│   ├── spending_heatmap.png
-│   └── target_distribution.png
+│   └── kaggle_score_log_template.csv
+├── figures/
+│   └── .gitkeep
 └── data/
     ├── README.md
     └── .gitkeep
 ```
 
-Generated files are intentionally ignored by Git. Running the scripts may create additional files such as submissions, metrics tables, feature importances, and model-specific plots in `outputs/` and `figures/`.
+Generated files are intentionally ignored by Git. Running scripts creates submissions, metrics tables, feature importances, comparison artifacts, and plots in `outputs/` and `figures/`.
 
 ## Environment and dependencies
 
@@ -61,15 +49,7 @@ Python 3.10+ is recommended. Install dependencies from the repository root:
 pip install -r requirements.txt
 ```
 
-Core packages:
-
-- `numpy`
-- `pandas`
-- `scikit-learn`
-- `matplotlib`
-- `seaborn`
-- `lightgbm`
-- `optuna`
+Core packages include `numpy`, `pandas`, `scikit-learn`, `matplotlib`, `seaborn`, `lightgbm`, and `optuna`.
 
 ## Data setup
 
@@ -108,9 +88,34 @@ data/spaceship_catboost_preprocessed_package/
 
 If the zip exists and the folder does not, `src/train_lightgbm.py` extracts it automatically.
 
-## How to run all available models
+If required local data is missing, scripts raise clear file-not-found messages instead of faking results.
 
-From the repository root, run any model script independently:
+## How to run all models
+
+Use the unified runner from the repository root:
+
+```bash
+python src/run_all.py
+```
+
+Run a selected subset:
+
+```bash
+python src/run_all.py --models svm random_forest logistic_regression
+python src/run_all.py --models lightgbm
+```
+
+Run a faster demo/smoke pass that skips the heavier LightGBM track, skips SVM tuning, and reduces Logistic Regression Optuna trials:
+
+```bash
+python src/run_all.py --skip-heavy
+```
+
+The runner executes each selected script in a subprocess, prints which models succeeded or failed, and continues after individual failures such as missing local data.
+
+## How to run a single model
+
+From the repository root:
 
 ```bash
 python src/train_svm.py
@@ -121,63 +126,56 @@ python src/train_random_forest.py
 
 Each script accepts command-line options for data and output locations. Use `--help` on a script to see available options.
 
-## SVM model
-
-From the repository root:
-
-```bash
-python src/train_svm.py
-```
-
-The SVM pipeline follows the original notebook logic:
-
-- fills spending features with `0`,
-- applies `log1p` to spending features,
-- fills selected categorical columns with training-set mode,
-- fills `Age` with training-set median,
-- bins age into four ordinal groups,
-- drops `Name`, `PassengerId`, `Cabin`, and original `Age`,
-- one-hot encodes categorical features,
-- standardizes numeric features,
-- evaluates a baseline RBF SVM,
-- runs the Optuna tuning search by default using 20 trials,
-- trains the selected SVM and creates a Kaggle submission.
-
-For a faster local smoke test, skip Optuna and use baseline parameters:
+Faster local examples:
 
 ```bash
 python src/train_svm.py --skip-tuning
+python src/train_logistic_regression.py --optuna-trials 5
 ```
 
-Expected SVM outputs:
+## How to generate the model comparison table
+
+After running one or more models, generate a summary CSV and comparison plots:
+
+```bash
+python src/compare_models.py
+```
+
+This reads available result files from `outputs/` and writes:
+
+```text
+outputs/model_comparison_summary.csv
+figures/model_comparison_accuracy.png
+figures/model_comparison_training_time.png
+```
+
+Kaggle public leaderboard scores are not available from the training code. Enter any manually submitted Kaggle scores in:
+
+```text
+outputs/kaggle_score_log_template.csv
+```
+
+with columns:
+
+```text
+model,submission_file,public_score,notes
+```
+
+Then rerun `python src/compare_models.py` to include those scores in the comparison table.
+
+## Expected outputs by model
+
+### SVM
 
 ```text
 outputs/svm_submission.csv
 outputs/svm_evaluation_summary.csv
 outputs/svm_validation_metrics.json
+outputs/svm_classification_report.txt
+figures/svm_confusion_matrix.png
 ```
 
-## LightGBM model
-
-From the repository root:
-
-```bash
-python src/train_lightgbm.py
-```
-
-The LightGBM pipeline follows the original notebook logic:
-
-- loads the preprocessed CatBoost-style feature package,
-- reads categorical feature metadata,
-- aligns train/test categorical columns using shared `pandas.Categorical` categories,
-- trains `lightgbm.LGBMClassifier` with 5-fold `StratifiedKFold`,
-- uses the same fixed LightGBM hyperparameters and early stopping setup,
-- averages test probabilities across folds,
-- searches the best OOF classification threshold from `0.350` to `0.650`,
-- evaluates OOF predictions with the best threshold,
-- saves prediction, fold result, threshold, and feature importance artifacts.
-
-Expected LightGBM outputs:
+### LightGBM
 
 ```text
 outputs/submission_lgbm_v1.csv
@@ -189,36 +187,7 @@ outputs/lgbm_threshold_search.csv
 figures/lgbm_feature_importance.png
 ```
 
-## Logistic Regression model
-
-From the repository root:
-
-```bash
-python src/train_logistic_regression.py
-```
-
-The Logistic Regression pipeline integrates the teammate zip package into the shared `src/` layout while preserving the original model approach:
-
-- loads raw `data/train.csv` and `data/test.csv`,
-- fills monetary missing values with `0`,
-- applies `log1p` to monetary features,
-- imputes categorical features with the mode,
-- imputes age with the median and bins it into four ordinal groups,
-- extracts `Cabin_deck`,
-- creates `TotalSpend`, `TotalSpend_log`, `HasSpending`, `CryoSleep_bin`, and `VIP_bin`,
-- label-encodes `HomePlanet`, `Destination`, and `Cabin_deck`,
-- standardizes the selected model features,
-- tunes Logistic Regression with Optuna using 50 trials by default,
-- evaluates ROC-AUC, accuracy, precision, recall, F1, confusion matrix, validation summary, and classification reports,
-- creates a Kaggle submission and a performance analysis figure.
-
-For a faster local run, reduce the Optuna trials:
-
-```bash
-python src/train_logistic_regression.py --optuna-trials 5
-```
-
-Expected Logistic Regression outputs:
+### Logistic Regression
 
 ```text
 outputs/logistic_regression_submission.csv
@@ -229,41 +198,35 @@ outputs/logistic_regression_classification_report.txt
 figures/logistic_regression_performance_analysis.png
 ```
 
-## Random Forest model
+Validation metrics are computed with a model trained only on the training split. A separate final model is then fit on the full training set for the Kaggle submission.
 
-From the repository root:
-
-```bash
-python src/train_random_forest.py
-```
-
-The Random Forest pipeline integrates the uploaded teammate implementation into the shared `src/` layout while preserving the original model approach:
-
-- loads raw `data/train.csv` and `data/test.csv`,
-- fills spending feature missing values with `0`,
-- creates `TotalSpending` before applying `log1p` to spending features,
-- imputes `Age` with the median and bins it into four ordinal groups,
-- imputes categorical features with the mode,
-- drops `PassengerId`, `Name`, and `Cabin`,
-- one-hot encodes `HomePlanet`, `Destination`, `CryoSleep`, and `VIP`,
-- trains `RandomForestClassifier` with `n_estimators=300`, `max_depth=10`, `min_samples_split=5`, `random_state=42`, `n_jobs=-1`, and `criterion="gini"`,
-- evaluates 5-fold `StratifiedKFold` cross-validation and a train/validation split,
-- prints validation accuracy, a classification report, confusion matrix, training time, and saved output locations,
-- saves validation metrics, feature importance, report-ready figures, and a Kaggle submission.
-
-Expected Random Forest outputs:
+### Random Forest
 
 ```text
 outputs/random_forest_submission.csv
 outputs/random_forest_validation_summary.csv
+outputs/random_forest_classification_report.txt
 outputs/random_forest_feature_importance.csv
 figures/random_forest_confusion_matrix.png
 figures/random_forest_feature_importance.png
 ```
 
+Random Forest preprocessing learns the Age median and categorical modes from the training data and applies those values consistently to the test data.
+
+## Demo checklist for final submission
+
+1. Confirm dependencies install successfully: `pip install -r requirements.txt`.
+2. Place `data/train.csv` and `data/test.csv` under `data/` for SVM, Logistic Regression, and Random Forest.
+3. Place or extract the LightGBM feature package under `data/` if demoing LightGBM.
+4. Run a fast smoke test: `python src/run_all.py --skip-heavy`.
+5. Run the final selected model scripts with full settings when local data is available.
+6. Generate comparison artifacts: `python src/compare_models.py`.
+7. If Kaggle submissions were made manually, update `outputs/kaggle_score_log_template.csv` and rerun the comparison script.
+8. Open the generated confusion matrices, feature-importance plots, and model-comparison plots for presentation screenshots.
+
 ## Reproducibility notes
 
-- Scripts use relative project paths by default and are intended to run from the repository root.
+- Scripts use relative project paths based on the repository root through `src/utils.py`.
 - Random seeds are fixed at `42` where used in the original experiment logic.
 - Raw data, local feature packages, generated outputs, caches, virtual environments, and zip archives are excluded through `.gitignore`.
 - The repository is organized as one group project rather than separate personal folders.

@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import time
 from pathlib import Path
+from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -34,12 +35,27 @@ DROP_COLUMNS = ["PassengerId", "Name", "Cabin"]
 TARGET_COLUMN = "Transported"
 
 
-def preprocess_random_forest_data(df: pd.DataFrame, is_train: bool = True) -> pd.DataFrame:
-    """Apply the teammate Random Forest preprocessing logic to one data frame.
+def fit_random_forest_preprocessing_values(train_df: pd.DataFrame) -> dict[str, Any]:
+    """Learn imputation values from the training data only."""
+    return {
+        "age_median": train_df["Age"].median(),
+        "categorical_modes": {
+            col: train_df[col].mode()[0] if not train_df[col].mode().empty else "Unknown"
+            for col in CATEGORICAL_COLUMNS
+        },
+    }
 
-    The original implementation processed train and test frames independently,
-    including Age median and categorical mode imputation. That behavior is kept
-    here to preserve the uploaded model logic as closely as possible.
+
+def preprocess_random_forest_data(
+    df: pd.DataFrame,
+    preprocessing_values: dict[str, Any],
+    is_train: bool = True,
+) -> pd.DataFrame:
+    """Apply Random Forest preprocessing using train-learned values.
+
+    Spending features still use the original teammate assumption that missing
+    spending means zero, but Age median and categorical modes are learned once
+    from the training data and then reused for validation/test data.
     """
     data = df.copy()
 
@@ -54,8 +70,8 @@ def preprocess_random_forest_data(df: pd.DataFrame, is_train: bool = True) -> pd
     for col in [*SPENDING_COLUMNS, "TotalSpending"]:
         data[col] = np.log1p(data[col])
 
-    # Age: fill missing with median, then discretize into four ordered groups.
-    data["Age"] = data["Age"].fillna(data["Age"].median())
+    # Age: fill missing with the training median, then discretize into four ordered groups.
+    data["Age"] = data["Age"].fillna(preprocessing_values["age_median"])
     data["AgeGroup"] = pd.cut(
         data["Age"],
         bins=[-1, 12, 18, 60, 100],
@@ -65,9 +81,10 @@ def preprocess_random_forest_data(df: pd.DataFrame, is_train: bool = True) -> pd
     # Drop original Age after creating AgeGroup.
     data = data.drop(columns=["Age"])
 
-    # Categorical variables: mode imputation.
+    # Categorical variables: training-mode imputation.
+    categorical_modes = preprocessing_values["categorical_modes"]
     for col in CATEGORICAL_COLUMNS:
-        data[col] = data[col].fillna(data[col].mode()[0])
+        data[col] = data[col].fillna(categorical_modes[col])
 
     # Drop irrelevant features.
     data = data.drop(columns=[col for col in DROP_COLUMNS if col in data.columns])
@@ -176,8 +193,9 @@ def main() -> None:
     print("Training set shape:", train_df.shape)
     print("Test set shape:", test_df.shape)
 
-    train_processed = preprocess_random_forest_data(train_df, is_train=True)
-    test_processed = preprocess_random_forest_data(test_df, is_train=False)
+    preprocessing_values = fit_random_forest_preprocessing_values(train_df)
+    train_processed = preprocess_random_forest_data(train_df, preprocessing_values, is_train=True)
+    test_processed = preprocess_random_forest_data(test_df, preprocessing_values, is_train=False)
 
     X = train_processed.drop(columns=[TARGET_COLUMN])
     y = train_processed[TARGET_COLUMN]
@@ -227,6 +245,9 @@ def main() -> None:
     print(cm)
     print(f"Training time: {training_time:.2f} seconds")
 
+    report_path = output_dir / "random_forest_classification_report.txt"
+    report_path.write_text(report, encoding="utf-8")
+
     summary_path = output_dir / "random_forest_validation_summary.csv"
     cv_columns = {f"cv_fold_{idx + 1}_accuracy": score for idx, score in enumerate(cv_scores)}
     summary_df = pd.DataFrame(
@@ -270,6 +291,7 @@ def main() -> None:
 
     print("\nOutput files saved:")
     print(f"- Validation summary: {summary_path}")
+    print(f"- Classification report: {report_path}")
     print(f"- Feature importance CSV: {feature_importance_path}")
     print(f"- Confusion matrix plot: {confusion_matrix_path}")
     print(f"- Feature importance plot: {feature_importance_plot_path}")
