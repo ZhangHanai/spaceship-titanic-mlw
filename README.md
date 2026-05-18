@@ -1,11 +1,16 @@
 # AI3023 Machine Learning Workshop: Spaceship Titanic
 
-This repository contains a reproducible Python implementation for the Kaggle **Spaceship Titanic** binary classification task. The goal is to predict whether each passenger was `Transported` using two model tracks from the original experiments:
+This repository contains the unified group project for the Kaggle **Spaceship Titanic** binary classification task. The goal is to predict whether each passenger was `Transported` using reproducible machine learning scripts under one shared project structure.
 
-1. an SVM model using raw Kaggle CSV files and notebook-equivalent preprocessing, and
-2. a LightGBM model using the preprocessed CatBoost-style feature package from the LightGBM notebook.
+Earlier notebook experiments were converted into runnable Python scripts for reproducibility. The final source code lives in `src/`, with model outputs written to `outputs/` and figures written to `figures/`.
 
-The original notebooks are kept for experiment history, but the final project code has been refactored into runnable Python scripts for cleaner GitHub submission, easier reproducibility, and inclusion in a final ZIP archive.
+## Model list
+
+The project currently includes three model tracks:
+
+- **SVM** using raw Kaggle CSV files and the SVM notebook-equivalent preprocessing pipeline.
+- **LightGBM** using the preprocessed CatBoost-style feature package from the LightGBM experiment.
+- **Logistic Regression** using the teammate package's preprocessing, Optuna hyperparameter search, evaluation reports, and performance visualization.
 
 ## Repository structure
 
@@ -14,22 +19,35 @@ spaceship-titanic-mlw/
 ├── README.md
 ├── requirements.txt
 ├── .gitignore
-├── SVM_Model_Spaceship_Titanic.ipynb
-├── lightgbm_final.ipynb
 ├── src/
 │   ├── train_svm.py
 │   ├── train_lightgbm.py
+│   ├── train_logistic_regression.py
 │   ├── preprocessing.py
 │   ├── metrics.py
 │   └── utils.py
 ├── outputs/
 │   └── .gitkeep
 ├── figures/
-│   └── .gitkeep
+│   ├── .gitkeep
+│   ├── age_by_transported.png
+│   ├── bivariate_summary_fixed.png
+│   ├── boxplots_outliers.png
+│   ├── cabin_analysis.png
+│   ├── cabin_analysis_fixed.png
+│   ├── categorical_analysis.png
+│   ├── correlation_heatmap_fixed.png
+│   ├── missing_values.png
+│   ├── numerical_distributions.png
+│   ├── spending_analysis.png
+│   ├── spending_heatmap.png
+│   └── target_distribution.png
 └── data/
     ├── README.md
     └── .gitkeep
 ```
+
+Generated files are intentionally ignored by Git. Running the scripts may create additional files such as submissions, metrics tables, feature importances, and model-specific plots in `outputs/` and `figures/`.
 
 ## Environment and dependencies
 
@@ -45,16 +63,17 @@ Core packages:
 - `pandas`
 - `scikit-learn`
 - `matplotlib`
+- `seaborn`
 - `lightgbm`
-- `optuna` for SVM hyperparameter tuning
+- `optuna`
 
 ## Data setup
 
 Kaggle data and generated feature packages are intentionally ignored by Git. Place local data under `data/`.
 
-### SVM inputs
+### Raw Kaggle CSV inputs
 
-The SVM script expects raw Kaggle files:
+The SVM and Logistic Regression scripts expect the raw Kaggle files:
 
 ```text
 data/train.csv
@@ -62,9 +81,9 @@ data/test.csv
 data/sample_submission.csv
 ```
 
-`sample_submission.csv` is optional for the current script, but it is part of the normal Kaggle download and useful for checking the expected submission format.
+`sample_submission.csv` is optional for the current scripts, but it is part of the normal Kaggle download and useful for checking the expected submission format.
 
-### LightGBM inputs
+### LightGBM feature package inputs
 
 The LightGBM script expects either this zip file:
 
@@ -85,7 +104,19 @@ data/spaceship_catboost_preprocessed_package/
 
 If the zip exists and the folder does not, `src/train_lightgbm.py` extracts it automatically.
 
-## How to run the SVM model
+## How to run all available models
+
+From the repository root, run any model script independently:
+
+```bash
+python src/train_svm.py
+python src/train_lightgbm.py
+python src/train_logistic_regression.py
+```
+
+Each script accepts command-line options for data and output locations. Use `--help` on a script to see available options.
+
+## SVM model
 
 From the repository root:
 
@@ -107,7 +138,7 @@ The SVM pipeline follows the original notebook logic:
 - runs the Optuna tuning search by default using 20 trials,
 - trains the selected SVM and creates a Kaggle submission.
 
-For a faster local smoke test, you can skip Optuna and use baseline parameters:
+For a faster local smoke test, skip Optuna and use baseline parameters:
 
 ```bash
 python src/train_svm.py --skip-tuning
@@ -121,7 +152,7 @@ outputs/svm_evaluation_summary.csv
 outputs/svm_validation_metrics.json
 ```
 
-## How to run the LightGBM model
+## LightGBM model
 
 From the repository root:
 
@@ -153,9 +184,49 @@ outputs/lgbm_threshold_search.csv
 figures/lgbm_feature_importance.png
 ```
 
+## Logistic Regression model
+
+From the repository root:
+
+```bash
+python src/train_logistic_regression.py
+```
+
+The Logistic Regression pipeline integrates the teammate zip package into the shared `src/` layout while preserving the original model approach:
+
+- loads raw `data/train.csv` and `data/test.csv`,
+- fills monetary missing values with `0`,
+- applies `log1p` to monetary features,
+- imputes categorical features with the mode,
+- imputes age with the median and bins it into four ordinal groups,
+- extracts `Cabin_deck`,
+- creates `TotalSpend`, `TotalSpend_log`, `HasSpending`, `CryoSleep_bin`, and `VIP_bin`,
+- label-encodes `HomePlanet`, `Destination`, and `Cabin_deck`,
+- standardizes the selected model features,
+- tunes Logistic Regression with Optuna using 50 trials by default,
+- evaluates ROC-AUC, accuracy, precision, recall, F1, confusion matrix, validation summary, and classification reports,
+- creates a Kaggle submission and a performance analysis figure.
+
+For a faster local run, reduce the Optuna trials:
+
+```bash
+python src/train_logistic_regression.py --optuna-trials 5
+```
+
+Expected Logistic Regression outputs:
+
+```text
+outputs/logistic_regression_submission.csv
+outputs/logistic_regression_validation_summary.csv
+outputs/logistic_regression_metrics.csv
+outputs/logistic_regression_feature_importance.csv
+outputs/logistic_regression_classification_report.txt
+figures/logistic_regression_performance_analysis.png
+```
+
 ## Reproducibility notes
 
-- Scripts use relative paths and are intended to run from the repository root.
-- Random seeds are fixed at `42` where used in the original notebook logic.
-- The notebooks remain in the repository as experimental records, while the `src/` scripts are the clean runnable source code for the final project.
-- Generated outputs, local Kaggle data, zip packages, caches, and virtual environments are excluded through `.gitignore`.
+- Scripts use relative project paths by default and are intended to run from the repository root.
+- Random seeds are fixed at `42` where used in the original experiment logic.
+- Raw data, local feature packages, generated outputs, caches, virtual environments, and zip archives are excluded through `.gitignore`.
+- The repository is organized as one group project rather than separate personal folders.
