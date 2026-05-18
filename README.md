@@ -6,11 +6,12 @@ Earlier notebook experiments were converted into runnable Python scripts for rep
 
 ## Model list
 
-The project currently includes three model tracks:
+The project currently includes four model tracks:
 
 - **SVM** using raw Kaggle CSV files and the SVM notebook-equivalent preprocessing pipeline.
 - **LightGBM** using the preprocessed CatBoost-style feature package from the LightGBM experiment.
 - **Logistic Regression** using the teammate package's preprocessing, Optuna hyperparameter search, evaluation reports, and performance visualization.
+- **Random Forest** using the teammate implementation's spending features, age binning, one-hot encoding, 5-fold cross-validation, validation reports, feature importance, and Kaggle submission generation.
 
 ## Repository structure
 
@@ -23,6 +24,7 @@ spaceship-titanic-mlw/
 │   ├── train_svm.py
 │   ├── train_lightgbm.py
 │   ├── train_logistic_regression.py
+│   ├── train_random_forest.py
 │   ├── preprocessing.py
 │   ├── metrics.py
 │   └── utils.py
@@ -38,6 +40,8 @@ spaceship-titanic-mlw/
 │   ├── categorical_analysis.png
 │   ├── correlation_heatmap_fixed.png
 │   ├── missing_values.png
+│   ├── model comparison graph.png
+│   ├── model comparison.png
 │   ├── numerical_distributions.png
 │   ├── spending_analysis.png
 │   ├── spending_heatmap.png
@@ -73,7 +77,7 @@ Kaggle data and generated feature packages are intentionally ignored by Git. Pla
 
 ### Raw Kaggle CSV inputs
 
-The SVM and Logistic Regression scripts expect the raw Kaggle files:
+The SVM, Logistic Regression, and Random Forest scripts expect the raw Kaggle files:
 
 ```text
 data/train.csv
@@ -112,6 +116,7 @@ From the repository root, run any model script independently:
 python src/train_svm.py
 python src/train_lightgbm.py
 python src/train_logistic_regression.py
+python src/train_random_forest.py
 ```
 
 Each script accepts command-line options for data and output locations. Use `--help` on a script to see available options.
@@ -222,6 +227,38 @@ outputs/logistic_regression_metrics.csv
 outputs/logistic_regression_feature_importance.csv
 outputs/logistic_regression_classification_report.txt
 figures/logistic_regression_performance_analysis.png
+```
+
+## Random Forest model
+
+From the repository root:
+
+```bash
+python src/train_random_forest.py
+```
+
+The Random Forest pipeline integrates the uploaded teammate implementation into the shared `src/` layout while preserving the original model approach:
+
+- loads raw `data/train.csv` and `data/test.csv`,
+- fills spending feature missing values with `0`,
+- creates `TotalSpending` before applying `log1p` to spending features,
+- imputes `Age` with the median and bins it into four ordinal groups,
+- imputes categorical features with the mode,
+- drops `PassengerId`, `Name`, and `Cabin`,
+- one-hot encodes `HomePlanet`, `Destination`, `CryoSleep`, and `VIP`,
+- trains `RandomForestClassifier` with `n_estimators=300`, `max_depth=10`, `min_samples_split=5`, `random_state=42`, `n_jobs=-1`, and `criterion="gini"`,
+- evaluates 5-fold `StratifiedKFold` cross-validation and a train/validation split,
+- prints validation accuracy, a classification report, confusion matrix, training time, and saved output locations,
+- saves validation metrics, feature importance, report-ready figures, and a Kaggle submission.
+
+Expected Random Forest outputs:
+
+```text
+outputs/random_forest_submission.csv
+outputs/random_forest_validation_summary.csv
+outputs/random_forest_feature_importance.csv
+figures/random_forest_confusion_matrix.png
+figures/random_forest_feature_importance.png
 ```
 
 ## Reproducibility notes
