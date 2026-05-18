@@ -1,0 +1,30 @@
+# Python caches and local environments
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+.venv/
+venv/
+env/
+ENV/
+
+# Local data and Kaggle packages
+data/*
+!data/README.md
+!data/.gitkeep
+*.zip
+
+# Generated outputs and figures
+outputs/*
+!outputs/.gitkeep
+figures/*
+!figures/.gitkeep
+
+# Logs and OS/editor files
+*.log
+.DS_Store
+.vscode/
+.idea/
