@@ -11,9 +11,10 @@ import json
 import time
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import pandas as pd
 from sklearn.compose import ColumnTransformer
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+from sklearn.metrics import ConfusionMatrixDisplay, accuracy_score, classification_report, confusion_matrix
 from sklearn.model_selection import StratifiedKFold, cross_val_score, train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
@@ -29,7 +30,7 @@ from preprocessing import (
     SVM_NUMERIC_FEATURES,
     preprocess_svm_data,
 )
-from utils import DATA_DIR, OUTPUT_DIR, ensure_directory, require_file
+from utils import DATA_DIR, FIGURES_DIR, OUTPUT_DIR, ensure_directory, require_file
 
 RANDOM_STATE = 42
 
@@ -90,6 +91,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train and evaluate the SVM Spaceship Titanic model.")
     parser.add_argument("--data-dir", default=DATA_DIR, type=Path, help="Directory containing train.csv/test.csv.")
     parser.add_argument("--output-dir", default=OUTPUT_DIR, type=Path, help="Directory for saved outputs.")
+    parser.add_argument("--figures-dir", default=FIGURES_DIR, type=Path, help="Directory for saved figures.")
     parser.add_argument("--optuna-trials", default=20, type=int, help="Number of Optuna trials; notebook used 20.")
     parser.add_argument(
         "--skip-tuning",
@@ -102,6 +104,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     output_dir = ensure_directory(args.output_dir)
+    figures_dir = ensure_directory(args.figures_dir)
 
     train_path = require_file(args.data_dir / "train.csv", "Download the Kaggle train.csv into data/.")
     test_path = require_file(args.data_dir / "test.csv", "Download the Kaggle test.csv into data/.")
@@ -177,10 +180,26 @@ def main() -> None:
     print("Best SVM Training Time:", best_training_time, "seconds")
     print("\nBest Parameters:")
     print(best_params)
+    final_report = classification_report(y_valid, y_valid_pred, target_names=["Not Transported", "Transported"])
+    final_cm = confusion_matrix(y_valid, y_valid_pred)
     print("\nClassification Report:")
-    print(classification_report(y_valid, y_valid_pred))
+    print(final_report)
     print("Confusion Matrix:")
-    print(confusion_matrix(y_valid, y_valid_pred))
+    print(final_cm)
+
+    report_path = output_dir / "svm_classification_report.txt"
+    report_path.write_text(final_report, encoding="utf-8")
+
+    cm_plot_path = figures_dir / "svm_confusion_matrix.png"
+    disp = ConfusionMatrixDisplay(
+        confusion_matrix=final_cm,
+        display_labels=["Not Transported", "Transported"],
+    )
+    disp.plot(cmap="Blues", values_format="d")
+    plt.title("SVM Confusion Matrix")
+    plt.tight_layout()
+    plt.savefig(cm_plot_path, dpi=300, bbox_inches="tight")
+    plt.close()
 
     svm_summary = pd.DataFrame(
         {
@@ -231,6 +250,8 @@ def main() -> None:
     print("\nSaved SVM submission to:", submission_path)
     print("Saved SVM evaluation summary to:", summary_path)
     print("Saved SVM validation metrics to:", metrics_path)
+    print("Saved SVM classification report to:", report_path)
+    print("Saved SVM confusion matrix plot to:", cm_plot_path)
     print(submission.head())
     print(submission.shape)
 

@@ -20,6 +20,7 @@ data/*
 # Generated outputs and figures
 outputs/*
 !outputs/.gitkeep
+!outputs/kaggle_score_log_template.csv
 figures/*
 !figures/.gitkeep
 

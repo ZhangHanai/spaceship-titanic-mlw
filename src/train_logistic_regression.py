@@ -148,8 +148,14 @@ class SpaceshipLogisticRegression:
         scores = cross_val_score(model, X, y, cv=cv, scoring="roc_auc")
         return float(scores.mean())
 
-    def train(self, X: np.ndarray, y: pd.Series, n_trials: int = 50) -> LogisticRegression:
-        """Train the model with the original Optuna hyperparameter optimization."""
+    def train(
+        self,
+        X: np.ndarray,
+        y: pd.Series,
+        n_trials: int = 50,
+        best_params: dict[str, object] | None = None,
+    ) -> LogisticRegression:
+        """Train the model, optionally reusing previously selected hyperparameters."""
         print("\n" + "=" * 60)
         print("TRAINING PHASE")
         print("=" * 60)
@@ -157,25 +163,32 @@ class SpaceshipLogisticRegression:
         print(f"Features: {X.shape[1]}")
         print(f"Positive class ratio: {y.mean():.2%}")
 
-        print("\n[1/3] Running Bayesian Optimization (Optuna)...")
-        optuna_start = time.time()
-        optuna.logging.set_verbosity(optuna.logging.WARNING)
-        study = optuna.create_study(
-            direction="maximize",
-            study_name="logistic_regression",
-            sampler=optuna.samplers.TPESampler(seed=self.random_state),
-        )
-        study.optimize(lambda trial: self.objective(trial, X, y), n_trials=n_trials, show_progress_bar=True)
-        optuna_time = time.time() - optuna_start
+        if best_params is None:
+            print("\n[1/3] Running Bayesian Optimization (Optuna)...")
+            optuna_start = time.time()
+            optuna.logging.set_verbosity(optuna.logging.WARNING)
+            study = optuna.create_study(
+                direction="maximize",
+                study_name="logistic_regression",
+                sampler=optuna.samplers.TPESampler(seed=self.random_state),
+            )
+            study.optimize(lambda trial: self.objective(trial, X, y), n_trials=n_trials, show_progress_bar=True)
+            optuna_time = time.time() - optuna_start
 
-        self.best_params = study.best_params
-        print("\n[2/3] Best parameters found:")
-        for param, value in self.best_params.items():
-            print(f"      {param}: {value}")
-        print(f"      Best CV ROC-AUC: {study.best_value:.4f}")
-        print(f"      Optimization time: {optuna_time:.2f}s")
+            self.best_params = study.best_params
+            print("\n[2/3] Best parameters found:")
+            for param, value in self.best_params.items():
+                print(f"      {param}: {value}")
+            print(f"      Best CV ROC-AUC: {study.best_value:.4f}")
+            print(f"      Optimization time: {optuna_time:.2f}s")
+        else:
+            self.best_params = best_params.copy()
+            print("\n[1/3] Reusing supplied best parameters; skipping Optuna for final full-data fit.")
+            print("\n[2/3] Parameters:")
+            for param, value in self.best_params.items():
+                print(f"      {param}: {value}")
 
-        print("\n[3/3] Training final model with best parameters...")
+        print("\n[3/3] Training final model with selected parameters...")
         train_start = time.time()
         final_params = self.best_params.copy()
         final_params["solver"] = "saga" if final_params.get("penalty") == "l1" else "lbfgs"
@@ -463,47 +476,55 @@ def main() -> None:
     print("  • Age: median imputation → 4 bins")
     print("  • Created: TotalSpend, HasSpending, Cabin_deck")
 
-    logistic_model = SpaceshipLogisticRegression(random_state=RANDOM_STATE)
-    train_processed = logistic_model.preprocess_features(train_df, fit_encoders=True)
-    X_train = logistic_model.prepare_features(train_processed)
-    X_train_scaled = logistic_model.scaler.fit_transform(X_train)
-
-    print(f"\nFinal feature matrix: {X_train_scaled.shape}")
-    print(f"Features ({len(logistic_model.feature_columns)}):")
-    for i, feat in enumerate(logistic_model.feature_columns, 1):
-        print(f"  {i:2d}. {feat}")
-
-    logistic_model.train(X_train_scaled, y_train, n_trials=args.optuna_trials)
-
-    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE)
-    cv_scores = cross_val_score(logistic_model.model, X_train_scaled, y_train, cv=cv, scoring="roc_auc")
-    print("\n[1] Cross-Validation Results (5-fold):")
-    print(f"    ROC-AUC scores: {[f'{s:.4f}' for s in cv_scores]}")
-    print(f"    Mean ± Std:     {cv_scores.mean():.4f} ± {cv_scores.std():.4f}")
-
-    train_metrics, y_pred, y_proba = logistic_model.evaluate(X_train_scaled, y_train)
-    cm = confusion_matrix(y_train, y_pred)
-    print("\n[2] Training Set Performance:")
-    for metric, value in train_metrics.items():
-        print(f"    {metric}: {value:.4f}")
-    print("\n[3] Confusion Matrix:")
-    print(f"    TN={cm[0, 0]:4d}  FP={cm[0, 1]:4d}")
-    print(f"    FN={cm[1, 0]:4d}  TP={cm[1, 1]:4d}")
-
-    X_train_split, X_val, y_train_split, y_val = train_test_split(
-        X_train_scaled,
+    eval_train_df, eval_val_df, y_eval_train, y_val = train_test_split(
+        train_df,
         y_train,
         test_size=0.2,
         random_state=RANDOM_STATE,
         stratify=y_train,
     )
+    print("\nValidation split is created before fitting encoders/scaler/model to avoid leakage.")
+    print(f"Training split: {eval_train_df.shape[0]} samples")
+    print(f"Validation split: {eval_val_df.shape[0]} samples")
+
+    validation_model = SpaceshipLogisticRegression(random_state=RANDOM_STATE)
+    eval_train_processed = validation_model.preprocess_features(eval_train_df, fit_encoders=True)
+    X_eval_train = validation_model.prepare_features(eval_train_processed)
+    X_eval_train_scaled = validation_model.scaler.fit_transform(X_eval_train)
+
+    eval_val_processed = validation_model.preprocess_features(eval_val_df, fit_encoders=False)
+    X_val = validation_model.prepare_features(eval_val_processed)
+    X_val_scaled = validation_model.scaler.transform(X_val)
+
+    print(f"\nValidation feature matrix: {X_eval_train_scaled.shape}")
+    print(f"Features ({len(validation_model.feature_columns)}):")
+    for i, feat in enumerate(validation_model.feature_columns, 1):
+        print(f"  {i:2d}. {feat}")
+
+    validation_model.train(X_eval_train_scaled, y_eval_train, n_trials=args.optuna_trials)
+
+    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE)
+    cv_scores = cross_val_score(validation_model.model, X_eval_train_scaled, y_eval_train, cv=cv, scoring="roc_auc")
+    print("\n[1] Cross-Validation Results on Training Split (5-fold):")
+    print(f"    ROC-AUC scores: {[f'{s:.4f}' for s in cv_scores]}")
+    print(f"    Mean ± Std:     {cv_scores.mean():.4f} ± {cv_scores.std():.4f}")
+
+    train_metrics, y_pred, y_proba = validation_model.evaluate(X_eval_train_scaled, y_eval_train)
+    cm = confusion_matrix(y_eval_train, y_pred)
+    print("\n[2] Training Split Performance:")
+    for metric, value in train_metrics.items():
+        print(f"    {metric}: {value:.4f}")
+    print("\n[3] Training Split Confusion Matrix:")
+    print(f"    TN={cm[0, 0]:4d}  FP={cm[0, 1]:4d}")
+    print(f"    FN={cm[1, 0]:4d}  TP={cm[1, 1]:4d}")
+
     print("\n" + "=" * 60)
     print("VALIDATION SET EVALUATION")
     print("=" * 60)
-    print(f"\nValidation set: {X_val.shape[0]} samples")
-    print(f"Training set: {X_train_split.shape[0]} samples")
-    val_predictions = logistic_model.predict(X_val)
-    val_proba = logistic_model.predict_proba(X_val)
+    print(f"\nValidation set: {X_val_scaled.shape[0]} samples")
+    print(f"Training set: {X_eval_train_scaled.shape[0]} samples")
+    val_predictions = validation_model.predict(X_val_scaled)
+    val_proba = validation_model.predict_proba(X_val_scaled)
     val_metrics = {
         "accuracy": accuracy_score(y_val, val_predictions),
         "precision": precision_score(y_val, val_predictions),
@@ -511,15 +532,15 @@ def main() -> None:
         "f1_score": f1_score(y_val, val_predictions),
         "roc_auc": roc_auc_score(y_val, val_proba),
     }
-    print("\nValidation Set Performance:")
+    print("\nValidation Set Performance (split-trained model):")
     for metric, value in val_metrics.items():
         print(f"    {metric}: {value:.5f}")
 
     feature_importance = pd.DataFrame(
         {
-            "feature": logistic_model.feature_columns,
-            "coefficient": logistic_model.model.coef_[0],
-            "importance": np.abs(logistic_model.model.coef_[0]),
+            "feature": validation_model.feature_columns,
+            "coefficient": validation_model.model.coef_[0],
+            "importance": np.abs(validation_model.model.coef_[0]),
         }
     ).sort_values("importance", ascending=False)
     print("\n[4] Feature Importance (Coefficient Magnitude):")
@@ -527,10 +548,21 @@ def main() -> None:
         direction = "(+)" if row["coefficient"] > 0 else "(-)"
         print(f"    {row['feature']:<25} {direction} {abs(row['coefficient']):.4f}")
 
-    test_processed = logistic_model.preprocess_features(test_df, fit_encoders=False)
-    X_test = logistic_model.prepare_features(test_processed)
-    X_test_scaled = logistic_model.scaler.transform(X_test)
-    test_predictions = logistic_model.predict(X_test_scaled)
+    final_model = SpaceshipLogisticRegression(random_state=RANDOM_STATE)
+    train_processed = final_model.preprocess_features(train_df, fit_encoders=True)
+    X_train = final_model.prepare_features(train_processed)
+    X_train_scaled = final_model.scaler.fit_transform(X_train)
+    final_model.train(
+        X_train_scaled,
+        y_train,
+        n_trials=args.optuna_trials,
+        best_params=validation_model.best_params,
+    )
+
+    test_processed = final_model.preprocess_features(test_df, fit_encoders=False)
+    X_test = final_model.prepare_features(test_processed)
+    X_test_scaled = final_model.scaler.transform(X_test)
+    test_predictions = final_model.predict(X_test_scaled)
 
     submission = pd.DataFrame({"PassengerId": test_df["PassengerId"], "Transported": test_predictions.astype(bool)})
     submission_path = output_dir / "logistic_regression_submission.csv"
@@ -545,10 +577,10 @@ def main() -> None:
         test_accuracy = accuracy_score(y_test_true, test_predictions)
         print(f"Test Set Accuracy: {test_accuracy:.5f}")
 
-    params_str = ", ".join([f"{k}: {v}" for k, v in (logistic_model.best_params or {}).items()]) or "Default parameters"
+    params_str = ", ".join([f"{k}: {v}" for k, v in (validation_model.best_params or {}).items()]) or "Default parameters"
     summary_df = generate_validation_summary(
         model_name="Logistic Regression",
-        model_type="Optuna Optimization",
+        model_type="Optuna Optimization (validation model trained only on training split)",
         cv_scores=cv_scores,
         val_metrics=val_metrics,
         test_accuracy=test_accuracy,
@@ -560,15 +592,15 @@ def main() -> None:
     metrics_path = output_dir / "logistic_regression_metrics.csv"
     pd.DataFrame(
         [
-            {"split": "training", **train_metrics},
-            {"split": "validation", **val_metrics},
+            {"split": "training", **train_metrics, "training_time_seconds": validation_model.training_time},
+            {"split": "validation", **val_metrics, "training_time_seconds": pd.NA},
         ]
     ).to_csv(metrics_path, index=False)
 
     feature_importance_path = output_dir / "logistic_regression_feature_importance.csv"
     feature_importance.to_csv(feature_importance_path, index=False)
 
-    report_sections = ["TRAINING SET PERFORMANCE REPORT", print_detailed_classification_report(y_train, y_pred)]
+    report_sections = ["TRAINING SPLIT PERFORMANCE REPORT", print_detailed_classification_report(y_eval_train, y_pred)]
     report_sections.extend(["VALIDATION SET PERFORMANCE REPORT", print_detailed_classification_report(y_val, val_predictions)])
     report_path = output_dir / "logistic_regression_classification_report.txt"
     report_path.write_text("\n\n".join(report_sections), encoding="utf-8")
@@ -577,11 +609,11 @@ def main() -> None:
         train_metrics,
         cv_scores,
         feature_importance,
-        y_train.values,
+        y_eval_train.values,
         y_proba,
-        logistic_model.training_time,
-        logistic_model.inference_time,
-        logistic_model.memory_usage,
+        validation_model.training_time,
+        validation_model.inference_time,
+        validation_model.memory_usage,
         figures_dir,
     )
 
