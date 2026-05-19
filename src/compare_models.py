@@ -161,6 +161,20 @@ def collect_rows(output_dir: Path, scores: pd.DataFrame) -> pd.DataFrame:
             " ".join(notes) or "LightGBM artifacts found.",
         )
 
+
+    xgb_summary = output_dir / "xgboost_validation_summary.csv"
+    if xgb_summary.exists():
+        summary = pd.read_csv(xgb_summary).iloc[0]
+        add_row(
+            rows,
+            scores,
+            "XGBoost",
+            summary.get("validation_accuracy", pd.NA),
+            summary.get("training_time_seconds", pd.NA),
+            "outputs/xgboost_submission.csv",
+            "Leakage-safe CV/OOF metrics with optional submission mode; details in xgboost_validation_summary.csv.",
+        )
+
     if not rows:
         print("No model result files found. Run one or more training scripts first.")
         return pd.DataFrame(columns=SUMMARY_COLUMNS)

@@ -35,9 +35,10 @@ MODEL_COMMANDS: dict[str, ModelCommand] = {
         REPO_ROOT / "src" / "train_logistic_regression.py",
     ),
     "lightgbm": ModelCommand("lightgbm", REPO_ROOT / "src" / "train_lightgbm.py", heavy=True),
+    "xgboost": ModelCommand("xgboost", REPO_ROOT / "src" / "train_xgboost.py", heavy=True),
 }
 
-DEFAULT_MODELS = ["svm", "random_forest", "logistic_regression", "lightgbm"]
+DEFAULT_MODELS = ["svm", "random_forest", "logistic_regression", "lightgbm", "xgboost"]
 
 
 def parse_args() -> argparse.Namespace:
