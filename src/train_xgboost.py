@@ -1,5 +1,5 @@
 """
-XGBoost solution for AI3023 Spaceship Titanic project.
+XGBoost training script for AI3023 Spaceship Titanic project.
 
 What this script does:
 1. Reads Kaggle Spaceship Titanic train/test CSV files.
@@ -10,14 +10,13 @@ What this script does:
 
 Run:
     pip install pandas numpy scikit-learn xgboost
-    python xgboost_spaceship_titanic.py --train train.csv --test test.csv
+    python src/train_xgboost.py
 
 Fast debug run:
-    python xgboost_spaceship_titanic.py --train train.csv --test test.csv --fast
+    python src/train_xgboost.py --fast
 """
 
 import argparse
-import os
 import time
 from pathlib import Path
 
@@ -34,23 +33,10 @@ from scipy.stats import randint, uniform
 
 from xgboost import XGBClassifier
 
+from utils import DATA_DIR, OUTPUT_DIR, require_file, ensure_directory
 
 RANDOM_STATE = 42
 SPEND_COLS = ["RoomService", "FoodCourt", "ShoppingMall", "Spa", "VRDeck"]
-
-
-def resolve_path(input_path: str, candidates: list[str]) -> str:
-    """Use the given path if it exists; otherwise try common fallback paths."""
-    if input_path and os.path.exists(input_path):
-        return input_path
-
-    for path in candidates:
-        if os.path.exists(path):
-            return path
-
-    raise FileNotFoundError(
-        f"Cannot find file: {input_path}. Tried fallbacks: {candidates}"
-    )
 
 
 def split_passenger_id(df: pd.DataFrame) -> pd.DataFrame:
@@ -80,22 +66,12 @@ def split_cabin(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def split_name(df: pd.DataFrame) -> pd.DataFrame:
-    """Extract surname and family size from Name."""
+    """Extract non-leaky name features."""
     out = df.copy()
     name = out["Name"].fillna("Unknown Unknown").astype(str)
     out["Surname"] = name.str.split().str[-1]
     out.loc[out["Name"].isna(), "Surname"] = "Unknown"
-
-    out["FamilySize"] = out.groupby("Surname")["PassengerId"].transform("count")
-    out.loc[out["Surname"].eq("Unknown"), "FamilySize"] = 1
-    out["HasFamily"] = (out["FamilySize"] > 1).astype(int)
-
-    # Reduce high-cardinality names.
-    surname_counts = out["Surname"].value_counts()
-    common_surnames = set(surname_counts[surname_counts >= 3].index)
-    out["SurnameGroup"] = out["Surname"].where(
-        out["Surname"].isin(common_surnames), "RareSurname"
-    )
+    out["NameWordCount"] = name.str.split().str.len().astype(float)
     return out
 
 
@@ -180,62 +156,31 @@ def add_combination_features(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def add_frequency_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Add category frequency features using only non-target structure."""
+def create_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Create leakage-safe engineered features for one dataset only."""
     out = df.copy()
-    freq_cols = [
-        "Group", "HomePlanet", "Destination", "CabinDeck", "CabinSide",
-        "CabinNumBin", "SurnameGroup", "Route", "DeckSide", "PlanetDeck"
-    ]
+    out = split_passenger_id(out)
+    out = split_cabin(out)
+    out = split_name(out)
+    out = add_missing_indicators(out)
+    out = rule_based_imputation(out)
+    out = add_spending_features(out)
+    out = add_age_features(out)
+    out = add_combination_features(out)
 
-    for col in freq_cols:
-        vc = out[col].astype(str).value_counts(dropna=False)
-        out[f"{col}_freq"] = out[col].astype(str).map(vc).astype(float)
+    drop_cols = ["PassengerId", "Cabin", "Name", "Surname", "Group"]
+    out = out.drop(columns=[c for c in drop_cols if c in out.columns])
+
+    for col in out.columns:
+        if pd.api.types.is_bool_dtype(out[col]):
+            out[col] = out[col].astype(object).where(pd.notna(out[col]), np.nan)
+            out[col] = out[col].map({True: "True", False: "False"}).fillna(np.nan)
+        elif pd.api.types.is_numeric_dtype(out[col]):
+            out[col] = pd.to_numeric(out[col], errors="coerce").astype(float)
+        else:
+            out[col] = out[col].astype(object).where(pd.notna(out[col]), np.nan)
 
     return out
-
-
-def create_features(train_df: pd.DataFrame, test_df: pd.DataFrame):
-    """
-    Combine train and test for non-target feature engineering, then split back.
-    This is common in Kaggle preprocessing because no target values from test are used.
-    """
-    train = train_df.drop(columns=["Transported"]).copy()
-    test = test_df.copy()
-    n_train = len(train)
-
-    full = pd.concat([train, test], axis=0, ignore_index=True)
-
-    full = split_passenger_id(full)
-    full = split_cabin(full)
-    full = split_name(full)
-    full = add_missing_indicators(full)
-    full = rule_based_imputation(full)
-    full = add_spending_features(full)
-    full = add_age_features(full)
-    full = add_combination_features(full)
-    full = add_frequency_features(full)
-
-    # Drop raw columns that are too detailed or not directly model-friendly.
-    drop_cols = ["PassengerId", "Cabin", "Name", "Surname", "Group"]
-    full = full.drop(columns=[c for c in drop_cols if c in full.columns])
-
-    # Convert pandas nullable missing values to np.nan so scikit-learn imputers work.
-    # Keep numeric columns numeric; keep categorical columns as object.
-    for col in full.columns:
-        if pd.api.types.is_bool_dtype(full[col]):
-            full[col] = full[col].astype(object).where(pd.notna(full[col]), np.nan)
-            full[col] = full[col].map({True: "True", False: "False"}).fillna(np.nan)
-        elif pd.api.types.is_numeric_dtype(full[col]):
-            full[col] = pd.to_numeric(full[col], errors="coerce").astype(float)
-        else:
-            full[col] = full[col].astype(object).where(pd.notna(full[col]), np.nan)
-
-    X = full.iloc[:n_train].reset_index(drop=True)
-    X_test = full.iloc[n_train:].reset_index(drop=True)
-    y = train_df["Transported"].astype(int).values
-
-    return X, X_test, y
 
 
 def build_pipeline(X: pd.DataFrame) -> Pipeline:
@@ -325,35 +270,16 @@ def find_best_threshold(y_true: np.ndarray, prob: np.ndarray) -> tuple[float, fl
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--train", type=str, default="train.csv", help="Path to train.csv")
-    parser.add_argument("--test", type=str, default="test.csv", help="Path to test.csv")
-    parser.add_argument("--output", type=str, default="submission_xgboost.csv", help="Output submission CSV")
-    parser.add_argument("--cv-results", type=str, default="xgboost_cv_results.csv", help="Output CV results CSV")
+    parser.add_argument("--data-dir", default=DATA_DIR, type=Path, help="Directory containing train.csv/test.csv.")
+    parser.add_argument("--output-dir", default=OUTPUT_DIR, type=Path, help="Directory for saved outputs.")
     parser.add_argument("--fast", action="store_true", help="Use fewer iterations for quick debugging")
+    parser.add_argument("--make-submission", action="store_true", help="Train on full train.csv and write Kaggle submission.")
     args = parser.parse_args()
 
-    train_path = resolve_path(
-        args.train,
-        [
-            "/mnt/data/train(3).csv",
-            "/mnt/data/train(1).csv",
-            "/mnt/data/train.csv",
-            "train(3).csv",
-            "train(1).csv",
-            "train.csv",
-        ],
-    )
-    test_path = resolve_path(
-        args.test,
-        [
-            "/mnt/data/test(3).csv",
-            "/mnt/data/test(1).csv",
-            "/mnt/data/test.csv",
-            "test(3).csv",
-            "test(1).csv",
-            "test.csv",
-        ],
-    )
+    output_dir = ensure_directory(args.output_dir)
+
+    train_path = require_file(args.data_dir / "train.csv", "Download the Kaggle train.csv into data/.")
+    test_path = require_file(args.data_dir / "test.csv", "Download the Kaggle test.csv into data/.")
 
     print(f"Reading training data from: {train_path}")
     print(f"Reading test data from: {test_path}")
@@ -365,10 +291,10 @@ def main():
     print(f"Test shape: {test_df.shape}")
     print(f"Target positive rate: {train_df['Transported'].mean():.4f}")
 
-    print("\nCreating features...")
-    X, X_test, y = create_features(train_df, test_df)
+    print("\nCreating leakage-safe training features...")
+    X = create_features(train_df.drop(columns=["Transported"]))
+    y = train_df["Transported"].astype(int).values
     print(f"Feature matrix shape: {X.shape}")
-    print(f"Test feature matrix shape: {X_test.shape}")
 
     pipeline = build_pipeline(X)
 
@@ -407,8 +333,9 @@ def main():
     print(f"\nTuning time: {elapsed:.2f} seconds")
 
     cv_results = pd.DataFrame(search.cv_results_).sort_values("rank_test_score")
-    cv_results.to_csv(args.cv_results, index=False)
-    print(f"Saved CV results to: {args.cv_results}")
+    cv_results_path = output_dir / "xgboost_cv_results.csv"
+    cv_results.to_csv(cv_results_path, index=False)
+    print(f"Saved CV results to: {cv_results_path}")
 
     print("\nCreating out-of-fold predictions with best model...")
     best_model = search.best_estimator_
@@ -434,28 +361,48 @@ def main():
     print("Confusion matrix:")
     print(confusion_matrix(y, oof_pred))
 
-    print("\nTraining final model on all training data...")
-    best_model.set_params(clf__n_jobs=1)
-    best_model.fit(X, y)
+    submission_path = pd.NA
+    if args.make_submission:
+        print("\nTraining final model on all training data for Kaggle submission...")
+        best_model.set_params(clf__n_jobs=1)
+        best_model.fit(X, y)
 
-    test_prob = best_model.predict_proba(X_test)[:, 1]
-    test_pred = (test_prob >= threshold).astype(bool)
+        X_test = create_features(test_df)
+        print(f"Test feature matrix shape: {X_test.shape}")
+        test_prob = best_model.predict_proba(X_test)[:, 1]
+        test_pred = (test_prob >= threshold).astype(bool)
 
-    submission = pd.DataFrame(
-        {
-            "PassengerId": test_df["PassengerId"],
-            "Transported": test_pred,
-        }
+        submission = pd.DataFrame(
+            {
+                "PassengerId": test_df["PassengerId"],
+                "Transported": test_pred,
+            }
+        )
+
+        output_path = output_dir / "xgboost_submission.csv"
+        submission.to_csv(output_path, index=False)
+        submission_path = "outputs/xgboost_submission.csv"
+
+        print(f"\nSaved Kaggle submission to: {output_path}")
+        print("Prediction distribution:")
+        print(submission["Transported"].value_counts())
+        print(f"Predicted transported rate: {submission['Transported'].mean():.4f}")
+
+    metrics_summary = pd.DataFrame(
+        [
+            {
+                "validation_accuracy": float(oof_acc),
+                "best_threshold": float(threshold),
+                "search_best_cv_accuracy": float(search.best_score_),
+                "training_time_seconds": float(elapsed),
+                "kaggle_public_score": pd.NA,
+                "submission_file": submission_path,
+            }
+        ]
     )
-
-    output_path = Path(args.output)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    submission.to_csv(output_path, index=False)
-
-    print(f"\nSaved Kaggle submission to: {output_path}")
-    print("Prediction distribution:")
-    print(submission["Transported"].value_counts())
-    print(f"Predicted transported rate: {submission['Transported'].mean():.4f}")
+    metrics_path = output_dir / "xgboost_validation_summary.csv"
+    metrics_summary.to_csv(metrics_path, index=False)
+    print(f"Saved XGBoost summary to: {metrics_path}")
 
     print("\nDone.")
 

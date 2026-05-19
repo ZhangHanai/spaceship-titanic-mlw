@@ -6,12 +6,13 @@ Earlier notebook experiments were converted into runnable Python scripts for rep
 
 ## Model list
 
-The project currently includes four model tracks:
+The project currently includes five model tracks:
 
 - **SVM** using raw Kaggle CSV files and the SVM notebook-equivalent preprocessing pipeline.
 - **LightGBM** using the preprocessed CatBoost-style feature package from the LightGBM experiment.
 - **Logistic Regression** using the teammate package's preprocessing, Optuna hyperparameter search, leakage-safe validation evaluation, reports, and performance visualization.
-- **Random Forest** using spending features, age binning, train-learned imputation values, one-hot encoding, 5-fold cross-validation, validation reports, feature importance, and Kaggle submission generation.
+- **Random Forest** using spending features, age binning, train-learned imputation values, one-hot encoding, 5-fold cross-validation, validation reports, feature importance, and optional Kaggle submission generation (`--make-submission`).
+- **XGBoost** using feature engineering, train/test-safe preprocessing pipeline, randomized hyperparameter search, out-of-fold threshold tuning, and optional Kaggle submission generation (`--make-submission`).
 
 ## Repository structure
 
@@ -49,7 +50,7 @@ Python 3.10+ is recommended. Install dependencies from the repository root:
 pip install -r requirements.txt
 ```
 
-Core packages include `numpy`, `pandas`, `scikit-learn`, `matplotlib`, `seaborn`, `lightgbm`, and `optuna`.
+Core packages include `numpy`, `pandas`, `scikit-learn`, `matplotlib`, `seaborn`, `lightgbm`, `xgboost`, and `optuna`.
 
 ## Data setup
 
@@ -103,6 +104,7 @@ Run a selected subset:
 ```bash
 python src/run_all.py --models svm random_forest logistic_regression
 python src/run_all.py --models lightgbm
+python src/run_all.py --models xgboost
 ```
 
 Run a faster demo/smoke pass that skips the heavier LightGBM track, skips SVM tuning, and reduces Logistic Regression Optuna trials:
@@ -122,6 +124,7 @@ python src/train_svm.py
 python src/train_lightgbm.py
 python src/train_logistic_regression.py
 python src/train_random_forest.py
+python src/train_xgboost.py --make-submission
 ```
 
 Each script accepts command-line options for data and output locations. Use `--help` on a script to see available options.
@@ -230,3 +233,12 @@ Random Forest preprocessing learns the Age median and categorical modes from the
 - Random seeds are fixed at `42` where used in the original experiment logic.
 - Raw data, local feature packages, generated outputs, caches, virtual environments, and zip archives are excluded through `.gitignore`.
 - The repository is organized as one group project rather than separate personal folders.
+
+
+### XGBoost
+
+```text
+outputs/xgboost_submission.csv
+outputs/xgboost_cv_results.csv
+outputs/xgboost_validation_summary.csv
+```
