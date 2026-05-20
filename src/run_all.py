@@ -1,128 +1,171 @@
-"""Run one or more Spaceship Titanic model training scripts safely.
+"""Run one or more Spaceship Titanic model training scripts and build a unified summary.
 
 Examples from the repository root:
+    python src/run_all.py
     python src/run_all.py --models svm random_forest logistic_regression
-    python src/run_all.py --models lightgbm
     python src/run_all.py --skip-heavy
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from utils import REPO_ROOT
+import pandas as pd
+
+from utils import OUTPUT_DIR, REPO_ROOT, ensure_directory
 
 
 @dataclass(frozen=True)
 class ModelCommand:
-    """Command metadata for a runnable model script."""
-
     name: str
     script: Path
     heavy: bool = False
+    optional: bool = False
 
 
 MODEL_COMMANDS: dict[str, ModelCommand] = {
-    "svm": ModelCommand("svm", REPO_ROOT / "src" / "train_svm.py"),
+    "logistic_regression": ModelCommand("logistic_regression", REPO_ROOT / "src" / "train_logistic_regression.py"),
+    "decision_tree": ModelCommand("decision_tree", REPO_ROOT / "src" / "train_decision_tree.py", optional=True),
     "random_forest": ModelCommand("random_forest", REPO_ROOT / "src" / "train_random_forest.py"),
-    "logistic_regression": ModelCommand(
-        "logistic_regression",
-        REPO_ROOT / "src" / "train_logistic_regression.py",
-    ),
-    "lightgbm": ModelCommand("lightgbm", REPO_ROOT / "src" / "train_lightgbm.py", heavy=True),
+    "svm": ModelCommand("svm", REPO_ROOT / "src" / "train_svm.py"),
     "xgboost": ModelCommand("xgboost", REPO_ROOT / "src" / "train_xgboost.py", heavy=True),
+    "catboost": ModelCommand("catboost", REPO_ROOT / "src" / "train_catboost.py", heavy=True, optional=True),
+    "lightgbm": ModelCommand("lightgbm", REPO_ROOT / "src" / "train_lightgbm.py", heavy=True, optional=True),
 }
 
-DEFAULT_MODELS = ["svm", "random_forest", "logistic_regression", "lightgbm", "xgboost"]
+DEFAULT_MODELS = ["logistic_regression", "random_forest", "svm", "xgboost", "lightgbm"]
 
 
 def parse_args() -> argparse.Namespace:
-    """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description="Run selected Spaceship Titanic model scripts.")
-    parser.add_argument(
-        "--models",
-        nargs="+",
-        choices=sorted(MODEL_COMMANDS),
-        default=DEFAULT_MODELS,
-        help="Model scripts to run. Defaults to all available models.",
-    )
-    parser.add_argument(
-        "--skip-heavy",
-        action="store_true",
-        help="Skip heavier models and use fast options where available for demo smoke runs.",
-    )
-    parser.add_argument(
-        "--continue-on-error",
-        action="store_true",
-        default=True,
-        help="Continue running later models if one script fails. This is the default.",
-    )
+    parser.add_argument("--models", nargs="+", choices=sorted(MODEL_COMMANDS), default=DEFAULT_MODELS)
+    parser.add_argument("--skip-heavy", action="store_true", help="Skip heavier models.")
     return parser.parse_args()
 
 
 def command_for_model(model: ModelCommand, skip_heavy: bool) -> list[str]:
-    """Build the subprocess command for one model."""
     command = [sys.executable, str(model.script)]
     if skip_heavy and model.name == "svm":
         command.append("--skip-tuning")
     if skip_heavy and model.name == "logistic_regression":
         command.extend(["--optuna-trials", "5"])
+    if model.name == "xgboost":
+        command.append("--make-submission")
+    if skip_heavy and model.name == "xgboost":
+        command.append("--fast")
     return command
 
 
+def _read_json(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def summarize_model_outputs(model_name: str, output_dir: Path) -> dict[str, object]:
+    row = {
+        "model_name": model_name,
+        "validation_accuracy": pd.NA,
+        "cv_accuracy": pd.NA,
+        "kaggle_score": pd.NA,
+        "training_time_seconds": pd.NA,
+        "best_params": pd.NA,
+        "submission_file": pd.NA,
+        "notes": "",
+    }
+
+    if model_name == "svm" and (output_dir / "svm_validation_metrics.json").exists():
+        m = _read_json(output_dir / "svm_validation_metrics.json")
+        row.update({
+            "validation_accuracy": m.get("best_validation_accuracy"),
+            "cv_accuracy": m.get("best_cv_accuracy"),
+            "training_time_seconds": m.get("best_training_time_seconds"),
+            "best_params": json.dumps(m.get("best_params", {})),
+            "submission_file": "outputs/svm_submission.csv",
+            "notes": "SVM metrics from svm_validation_metrics.json",
+        })
+    elif model_name == "random_forest" and (output_dir / "random_forest_validation_summary.csv").exists():
+        s = pd.read_csv(output_dir / "random_forest_validation_summary.csv").iloc[0]
+        row.update({
+            "validation_accuracy": s.get("validation_accuracy"),
+            "cv_accuracy": s.get("mean_cv_accuracy"),
+            "training_time_seconds": s.get("training_time_seconds"),
+            "best_params": "fixed teammate params",
+            "submission_file": "outputs/random_forest_submission.csv",
+            "notes": "Random Forest summary",
+        })
+    elif model_name == "logistic_regression" and (output_dir / "logistic_regression_validation_summary.csv").exists():
+        s = pd.read_csv(output_dir / "logistic_regression_validation_summary.csv").iloc[0]
+        row.update({
+            "validation_accuracy": s.get("validation_accuracy"),
+            "cv_accuracy": s.get("cv_roc_auc", pd.NA),
+            "training_time_seconds": s.get("training_time_seconds"),
+            "best_params": s.get("best_params", pd.NA),
+            "submission_file": "outputs/logistic_regression_submission.csv",
+            "notes": "Logistic Regression summary",
+        })
+    elif model_name == "xgboost" and (output_dir / "xgboost_validation_summary.csv").exists():
+        s = pd.read_csv(output_dir / "xgboost_validation_summary.csv").iloc[0]
+        row.update({
+            "validation_accuracy": s.get("validation_accuracy"),
+            "cv_accuracy": s.get("cv_accuracy", pd.NA),
+            "training_time_seconds": s.get("training_time_seconds"),
+            "best_params": s.get("best_params", pd.NA),
+            "submission_file": "outputs/xgboost_submission.csv",
+            "notes": "XGBoost summary",
+        })
+    elif model_name == "lightgbm" and (output_dir / "lgbm_fold_results.csv").exists():
+        s = pd.read_csv(output_dir / "lgbm_fold_results.csv")
+        row.update({
+            "validation_accuracy": s["accuracy_threshold_0.5"].mean() if "accuracy_threshold_0.5" in s.columns else pd.NA,
+            "training_time_seconds": s["training_time_seconds"].sum() if "training_time_seconds" in s.columns else pd.NA,
+            "best_params": "fixed teammate params",
+            "submission_file": "outputs/submission_lgbm_v1.csv",
+            "notes": "LightGBM fold summary",
+        })
+    return row
+
+
 def main() -> int:
-    """Run selected models and print a success/failure summary."""
     args = parse_args()
-    requested_models = list(dict.fromkeys(args.models))
-    if args.skip_heavy:
-        requested_models = [name for name in requested_models if not MODEL_COMMANDS[name].heavy]
+    requested_models = [m for m in dict.fromkeys(args.models) if (not args.skip_heavy or not MODEL_COMMANDS[m].heavy)]
+    output_dir = ensure_directory(OUTPUT_DIR)
 
-    if not requested_models:
-        print("No models selected after applying --skip-heavy.")
-        return 0
-
-    results: list[dict[str, object]] = []
     print("Repository root:", REPO_ROOT)
     print("Models to run:", ", ".join(requested_models))
 
+    run_rows = []
     for model_name in requested_models:
         model = MODEL_COMMANDS[model_name]
+        if not model.script.exists():
+            note = "Optional model script not found; skipped." if model.optional else "Model script not found."
+            print(f"[SKIP] {model.name}: {note} ({model.script})")
+            row = summarize_model_outputs(model_name, output_dir)
+            row["notes"] = f"{row['notes']} {note}".strip()
+            run_rows.append(row)
+            continue
+
         command = command_for_model(model, args.skip_heavy)
-        print("\n" + "=" * 80)
-        print(f"Running {model.name}: {' '.join(command)}")
-        print("=" * 80)
-        start_time = time.time()
-        completed = subprocess.run(command, cwd=REPO_ROOT, check=False)  # noqa: S603 - known local scripts
-        elapsed = time.time() - start_time
-        status = "succeeded" if completed.returncode == 0 else "failed"
-        results.append(
-            {
-                "model": model.name,
-                "status": status,
-                "return_code": completed.returncode,
-                "elapsed_seconds": elapsed,
-            }
-        )
-        print(f"{model.name} {status} in {elapsed:.2f}s with return code {completed.returncode}.")
+        print(f"\nRunning {model.name}: {' '.join(command)}")
+        start = time.time()
+        result = subprocess.run(command, cwd=REPO_ROOT, check=False)
+        elapsed = time.time() - start
+        row = summarize_model_outputs(model_name, output_dir)
+        if pd.isna(row["training_time_seconds"]):
+            row["training_time_seconds"] = round(elapsed, 3)
+        if result.returncode != 0:
+            row["notes"] = f"{row['notes']} run failed with code {result.returncode}".strip()
+        run_rows.append(row)
 
-    print("\n" + "=" * 80)
-    print("Run summary")
-    print("=" * 80)
-    for result in results:
-        print(
-            f"- {result['model']}: {result['status']} "
-            f"(return_code={result['return_code']}, elapsed={result['elapsed_seconds']:.2f}s)"
-        )
-
-    failed = [result for result in results if result["return_code"] != 0]
-    if failed:
-        print("\nOne or more models failed. Check messages above; missing local data is a common cause.")
-        return 1
+    df = pd.DataFrame(run_rows)
+    summary_path = output_dir / "results_summary.csv"
+    df.to_csv(summary_path, index=False)
+    print(f"\nSaved unified summary: {summary_path}")
+    print(df)
     return 0
 
 
