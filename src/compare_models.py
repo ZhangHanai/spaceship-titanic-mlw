@@ -11,13 +11,12 @@ import pandas as pd
 from utils import FIGURES_DIR, OUTPUT_DIR, ensure_directory
 
 SUITABILITY_NOTES = {
-    "logistic_regression": "Simple baseline, interpretable, limited non-linear ability.",
-    "decision_tree": "Interpretable but can overfit without pruning.",
-    "random_forest": "Stronger ensemble baseline, usually more stable than one tree.",
-    "svm": "Useful non-linear classifier but scale-sensitive and slower on larger feature spaces.",
-    "xgboost": "Strong tabular boosting model; captures interactions effectively.",
-    "catboost": "Strong boosting model, especially suitable for categorical/tabular data.",
-    "lightgbm": "Strong tabular boosting model; fast and interaction-friendly.",
+    "logistic_regression": "Linear baseline. Public score ~0.776. Limited by linear decision boundary on the high-dim sparse categorical feature space.",
+    "random_forest": "Bagging ensemble. Public score ~0.797. Stable but unable to match boosting on this dataset.",
+    "svm": "RBF-kernel SVM. Public score ~0.792. Scale-sensitive; one-hot expansion of 22 categorical columns degrades kernel distance.",
+    "xgboost": "Gradient boosting with second-order info. Public score ~0.806. Strong on tabular interactions but needs manual categorical handling.",
+    "lightgbm": "GBDT with leaf-wise growth. Public score ~0.807. Highest public score among standalone submissions in our experiments.",
+    "catboost": "GBDT with Ordered Boosting and Target Statistics. Public score ~0.805. Native categorical handling; primary baseline from the progress-stage experiments.",
 }
 
 
@@ -65,20 +64,8 @@ def main() -> None:
     print(f"Saved comparison table: {comparison_path}")
     print(df[["model_name", "validation_accuracy", "cv_accuracy", "training_time_seconds", "model_notes"]])
 
-    plot_bar(
-        df,
-        "validation_accuracy",
-        "Validation Accuracy by Model",
-        "Validation Accuracy",
-        figures_dir / "model_comparison_accuracy.png",
-    )
-    plot_bar(
-        df,
-        "training_time_seconds",
-        "Training Time by Model",
-        "Seconds",
-        figures_dir / "model_comparison_training_time.png",
-    )
+    plot_bar(df, "validation_accuracy", "Validation Accuracy by Model", "Validation Accuracy", figures_dir / "model_comparison_accuracy.png")
+    plot_bar(df, "training_time_seconds", "Training Time by Model", "Seconds", figures_dir / "model_comparison_training_time.png")
 
 
 if __name__ == "__main__":
