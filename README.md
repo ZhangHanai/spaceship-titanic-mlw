@@ -112,3 +112,22 @@ If public leaderboard scores are recorded manually, add them in `outputs/results
 
 - GitHub repository: `<ADD_GITHUB_LINK_HERE>`
 - Kaggle competition: Spaceship Titanic
+
+## Reproduce the highest Kaggle submission
+
+Run from repository root:
+
+```bash
+python src/generate_best_submission_082183.py
+```
+
+Required input files:
+- `data/test.csv`
+- `submissions/reference_aided_inputs/submission_catboost_threshold_050.csv`
+- `submissions/reference_aided_inputs/reference_submission_082137.csv`
+
+Generated output files:
+- `outputs/submission_082183_reference_aided_sideP.csv`
+- `outputs/audit_082183_reference_aided_sideP.csv`
+
+This script is a reference-aided post-processing pipeline used to reproduce our highest public Kaggle submission. It is not a standalone trained machine learning model. The standard model training scripts remain in `src/`.
