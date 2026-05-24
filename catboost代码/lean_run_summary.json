@@ -1,0 +1,63 @@
+{
+  "n_features": 24,
+  "seeds": [
+    42,
+    123,
+    2024
+  ],
+  "oof_acc_at_0.5": 0.8142183365926607,
+  "oof_best_threshold": 0.49000000000000016,
+  "oof_acc_at_best": 0.8145634418497641,
+  "per_seed": {
+    "42": {
+      "cv_acc_at_0.5": 0.8172092488208904,
+      "fold_accs": [
+        0.8142610695802185,
+        0.8171362852213916,
+        0.8205865439907993,
+        0.8250863060989643,
+        0.80897583429229
+      ]
+    },
+    "123": {
+      "cv_acc_at_0.5": 0.8173242839065915,
+      "fold_accs": [
+        0.8125359401955147,
+        0.81943645773433,
+        0.8223116733755031,
+        0.8279631760644419,
+        0.8043728423475259
+      ]
+    },
+    "2024": {
+      "cv_acc_at_0.5": 0.8121477050500403,
+      "fold_accs": [
+        0.816561242093157,
+        0.8056354226566993,
+        0.8113858539390454,
+        0.8130034522439585,
+        0.8141542002301496
+      ]
+    }
+  },
+  "true_count_sub_at_0.5": 2251,
+  "true_count_sub_at_best": 2285,
+  "elapsed_seconds": 94.98855638504028,
+  "params": {
+    "iterations": 4000,
+    "learning_rate": 0.03,
+    "depth": 8,
+    "l2_leaf_reg": 4.0,
+    "random_strength": 1.0,
+    "bootstrap_type": "Bayesian",
+    "bagging_temperature": 1.0,
+    "border_count": 128,
+    "loss_function": "Logloss",
+    "eval_metric": "Accuracy",
+    "od_type": "Iter",
+    "od_wait": 100,
+    "use_best_model": true,
+    "verbose": false,
+    "allow_writing_files": false
+  }
+}
