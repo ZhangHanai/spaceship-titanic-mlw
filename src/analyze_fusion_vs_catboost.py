@@ -42,7 +42,13 @@ def main() -> None:
             "experiment": "Ensemble + per-Side threshold",
             "kaggle_public_score": 0.80780,
             "category": "Fusion + calibration",
-            "interpretation": "best fusion-side result, mainly helped by calibration",
+            "interpretation": "Best fusion-side result, mainly helped by calibration",
+        },
+        {
+            "experiment": "Lean CatBoost + per-Side threshold",
+            "kaggle_public_score": 0.80851,
+            "category": "Best clean CatBoost",
+            "interpretation": "Best clean CatBoost-based result; used as the main comparison point against fusion",
         },
     ]
 
@@ -58,7 +64,7 @@ def main() -> None:
     bars = ax.bar(summary["experiment"], summary["kaggle_public_score"], color="#4C78A8")
     ax.set_title("Fusion vs CatBoost: Public Score Comparison")
     ax.set_ylabel("Kaggle public score")
-    ax.set_ylim(0.800, 0.809)
+    ax.set_ylim(0.800, 0.8092)
     ax.tick_params(axis="x", rotation=25)
 
     for bar, score in zip(bars, summary["kaggle_public_score"]):
