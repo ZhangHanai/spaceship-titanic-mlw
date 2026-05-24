@@ -31,11 +31,11 @@ def ensure_exists(path: Path, label: str) -> None:
 
 
 def main() -> None:
-    repo_root = Path(__file__).resolve().parents[1]
+    repo_root = Path(__file__).resolve().parents[2]
 
     test_path = repo_root / "data" / "test.csv"
-    baseline_path = repo_root / "submissions" / "reference_aided_inputs" / "submission_catboost_threshold_050.csv"
-    reference_path = repo_root / "submissions" / "reference_aided_inputs" / "reference_submission_082137.csv"
+    baseline_path = repo_root / "archive" / "reference_aided" / "reference_aided_inputs" / "submission_catboost_threshold_050.csv"
+    reference_path = repo_root / "archive" / "reference_aided" / "reference_aided_inputs" / "reference_submission_082137.csv"
 
     ensure_exists(test_path, "test.csv")
     ensure_exists(baseline_path, "baseline submission")
@@ -87,7 +87,8 @@ def main() -> None:
     submission.to_csv(submission_out, index=False)
     audit.to_csv(audit_out, index=False)
 
-    print("Best Kaggle submission reproduction pipeline complete.")
+    print("Reference-aided audit artifact generated.")
+    print("This script uses a reference-aided post-hoc combination and is not standalone model training.")
     print(f"baseline_false/reference_true flipped to True: {int(up_mask.sum())}")
     print(f"baseline_true/reference_false with Side=P flipped to False: {int(sidep_down_mask.sum())}")
     print(f"total changed from baseline: {int((audit['changed_from_baseline']).sum())}")

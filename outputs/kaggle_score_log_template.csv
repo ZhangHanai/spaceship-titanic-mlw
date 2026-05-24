@@ -5,4 +5,4 @@ svm,outputs/svm_submission.csv,0.79237,Zhang Han-ai
 xgboost,outputs/xgboost_submission.csv,0.80523,Yu Rui
 lightgbm,outputs/submission_lgbm_v1.csv,0.80687,Zhang Han-ai (extension; highest standalone public score)
 catboost,outputs/submission_catboost_v1.csv,0.80547,Lv Xinze (primary baseline)
-reference_aided_post_hoc,submissions/best_kaggle_submission_082183.csv,0.82183,Reference-aided post-processing (not an independent model)
+reference_aided_post_hoc,archive/reference_aided/best_kaggle_submission_082183.csv,0.82183,Archived reference-aided audit artifact; not an independent model
