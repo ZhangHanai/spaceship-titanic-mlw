@@ -6,3 +6,4 @@ xgboost,outputs/xgboost_submission.csv,0.80523,Yu Rui
 lightgbm,outputs/submission_lgbm_v1.csv,0.80687,Zhang Han-ai (extension; highest standalone public score)
 catboost,outputs/submission_catboost_v1.csv,0.80547,Lv Xinze (primary baseline)
 reference_aided_post_hoc,archive/reference_aided/best_kaggle_submission_082183.csv,0.82183,Archived reference-aided audit artifact; not an independent model
+catboost_lean_perside,outputs/catboost_lean/submission_lean_perside.csv,0.80851,Best clean CatBoost-based experiment; optional analysis code under analysis/catboost_lean_experiment/
