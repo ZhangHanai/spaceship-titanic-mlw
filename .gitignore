@@ -30,3 +30,7 @@ figures/*
 .DS_Store
 .vscode/
 .idea/
+
+# Keep archived reference-aided audit artifacts versioned
+!archive/reference_aided/*.csv
+!archive/reference_aided/reference_aided_inputs/*.csv

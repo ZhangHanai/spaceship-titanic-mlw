@@ -1,11 +1,23 @@
 # AI3023 Machine Learning Workshop — Spaceship Titanic
 
-Binary classification project for Kaggle **Spaceship Titanic**: predict `Transported` for each passenger.
+## 1. Project overview
 
-## Repository structure
+This repository contains our Kaggle Spaceship Titanic binary classification project. We implemented and compared Logistic Regression, Random Forest, SVM, XGBoost, LightGBM, and CatBoost.
+
+The main reproducible training pipeline consists of the model scripts in `src/train_*.py`, followed by `src/compare_models.py` and `src/analyze_fusion_vs_catboost.py`.
+
+## 2. Repository structure
 
 ```text
 spaceship-titanic-mlw/
+├── archive/
+│   └── reference_aided/
+│       ├── README.md
+│       ├── generate_reference_aided_submission.py
+│       ├── best_kaggle_submission_082183.csv
+│       └── reference_aided_inputs/
+│           ├── submission_catboost_threshold_050.csv
+│           └── reference_submission_082137.csv
 ├── data/
 │   └── README.md
 ├── src/
@@ -20,24 +32,23 @@ spaceship-titanic-mlw/
 │   ├── train_catboost.py
 │   ├── run_all.py
 │   ├── compare_models.py
-│   └── generate_best_submission_082183.py
+│   └── analyze_fusion_vs_catboost.py
 ├── outputs/
 ├── figures/
-├── submissions/
 ├── README.md
 ├── requirements.txt
 ├── LICENSE
 └── .gitignore
 ```
 
-## Required data files
+## 3. Required data files
 
 Place Kaggle files in `data/`:
 - `data/train.csv`
 - `data/test.csv`
 - `data/sample_submission.csv` (recommended)
 
-## Environment setup
+## 4. Environment setup
 
 ```bash
 python -m venv .venv
@@ -45,70 +56,57 @@ source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-## Run one model
+## 5. Main demo commands
+
+```bash
+pip install -r requirements.txt
+python src/run_all.py --skip-heavy
+python src/compare_models.py
+python src/analyze_fusion_vs_catboost.py
+```
+
+## 6. Run individual models
 
 ```bash
 python src/train_logistic_regression.py
 python src/train_random_forest.py
 python src/train_svm.py
-python src/train_xgboost.py --make-submission
-python src/train_lightgbm.py
 python src/train_catboost.py
+python src/train_lightgbm.py
+python src/train_xgboost.py --make-submission
 ```
 
-## Run all models
+## 7. Run model comparison
 
 ```bash
+python src/compare_models.py
+```
+
+## 8. Run fusion vs CatBoost analysis
+
+```bash
+python src/analyze_fusion_vs_catboost.py
+```
+
+## 9. Final model/pipeline interpretation
+
+CatBoost is treated as the final core model / core pipeline direction because it provides the strongest overall suitability for this categorical tabular task. Fusion experiments were analyzed separately and did not provide a stable replacement for the CatBoost-based pipeline.
+
+## 10. Appendix: reference-aided audit artifact
+
+The archived reference-aided script reproduces an auxiliary post-hoc Kaggle submission used for audit/error-analysis discussion. It combines our CatBoost baseline with a public reference submission and is not a standalone trained model. It is not part of the standard demo path.
+
+Run only if needed:
+
+```bash
+python archive/reference_aided/generate_reference_aided_submission.py
+```
+
+## Optional commands
+
+```bash
+python src/train_catboost.py
+python src/train_lightgbm.py
+python src/train_xgboost.py --make-submission
 python src/run_all.py
 ```
-
-Fast smoke run:
-
-```bash
-python src/run_all.py --skip-heavy
-```
-
-## Final model list
-
-- Logistic Regression
-- Random Forest
-- SVM
-- XGBoost
-- LightGBM
-- CatBoost
-
-## Main file guide
-
-- `src/run_all.py`: runs integrated training scripts and writes `outputs/results_summary.csv`.
-- `src/compare_models.py`: reads summary output and writes comparison table/plots.
-- `src/train_catboost.py`: scripted CatBoost progress-stage baseline migrated from notebook; writes `outputs/submission_catboost_v1.csv`, `outputs/catboost_fold_results.csv`, `outputs/catboost_oof_predictions.csv`, and `outputs/catboost_feature_importance.csv`.
-- `src/train_*.py`: individual teammate model training/evaluation/submission scripts.
-- `src/preprocessing.py`, `src/metrics.py`, `src/utils.py`: shared utilities.
-
-## Reproducibility notes
-
-- Fixed random seed settings are used where applicable.
-- `test.csv` labels are never used (Kaggle test has no labels).
-- The CatBoost script keeps the original progress-stage notebook pipeline to reproduce the reported baseline; stricter leakage-safe variants can be evaluated separately as ablation work.
-
-## Links
-
-- Kaggle competition: https://www.kaggle.com/competitions/spaceship-titanic
-- GitHub repository: (filled in after pushing to GitHub)
-
-## Optional: reproduce the reference-aided submission
-
-The script `src/generate_best_submission_082183.py` reproduces an auxiliary post-processing submission that combines our CatBoost baseline with a public reference submission. This is a rule-based post-hoc analysis used in our report's error analysis section and is not produced by a standalone trained model. The main reproducible results come from the `src/train_*.py` scripts.
-
-Required input files:
-- `data/test.csv`
-- `submissions/reference_aided_inputs/submission_catboost_threshold_050.csv`
-- `submissions/reference_aided_inputs/reference_submission_082137.csv`
-
-Run from repository root:
-
-```bash
-python src/generate_best_submission_082183.py
-```
-
-Output files are written to `outputs/`.
