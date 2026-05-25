@@ -38,3 +38,6 @@ archive/reference_aided/*submission*.csv
 
 # Reference-aided generated outputs
 submissions/reference_aided_outputs/*.csv
+
+# Reference-aided local input CSVs
+submissions/reference_aided_inputs/*.csv
