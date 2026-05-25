@@ -111,3 +111,13 @@ python analysis/catboost_lean_experiment/train_catboost_lean.py
 - Fusion experiment scripts are under `analysis/fusion_experiments/`.
 - Lean CatBoost experiment scripts are under `analysis/catboost_lean_experiment/`.
 - These are analysis extensions and are not required for the quick demo path.
+
+
+## 10. Reference-aided audit branch
+
+This branch includes an optional archive script for reproducing the 0.82183 reference-aided audit submission.
+
+- Script: `archive/reference_aided/generate_reference_aided_082183.py`
+- This path is not part of the standard training pipeline.
+- It is not called by `src/run_all.py`.
+

@@ -35,3 +35,6 @@ figures/*
 archive/reference_aided/*.csv
 archive/reference_aided/reference_aided_inputs/
 archive/reference_aided/*submission*.csv
+
+# Reference-aided generated outputs
+submissions/reference_aided_outputs/*.csv
