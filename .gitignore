@@ -32,6 +32,7 @@ figures/*
 .idea/
 
 # Prevent reference-aided artifact commits
+submissions/reference/*.csv
 archive/reference_aided/*.csv
 archive/reference_aided/reference_aided_inputs/
 archive/reference_aided/*submission*.csv
